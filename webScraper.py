@@ -2,9 +2,11 @@ from lxml import html, etree
 import requests
 import numpy as np
 import sys
+import pickle
+import time #DEBUG
 
 MIN_WORD_COUNT = 100
-MAX_WORD_COUNT = 2000
+MAX_WORD_COUNT = 1500
 MIN_RR_OCCURENCE = 3
 MIN_RATIO = 0.05
 SEARCHED_PHONEME = 'rr'
@@ -195,25 +197,28 @@ def saveObj(name, obj):
     '''saveObj
     Credit due to user Zah, from:
     https://stackoverflow.com/questions/19201290/how-to-save-a-dictionary-to-a-file'''
-    with open('obj/'+ name + '.pkl', 'wb') as f:
+    with open(name + '.pkl', 'wb') as f:
         pickle.dump(obj, f, pickle.HIGHEST_PROTOCOL)
 
 def loadObj(name):
     '''loadObj
     Credit due to user Zah, from:
     https://stackoverflow.com/questions/19201290/how-to-save-a-dictionary-to-a-file'''
-    with open('obj/' + name + '.pkl', 'rb') as f:
+    with open(name + '.pkl', 'rb') as f:
         return pickle.load(f)
 
 if __name__ == '__main__':
-    #finalURLs = loadObj('validURLs')
-    finalURLs = {}
-    print(finalURLs)
-    for num in range(101, 300):
+    finalURLs = loadObj('validURLs')
+    # finalURLs = {}
+    print('{0} URLs loaded from previous runs.'.format(len(finalURLs)))
+    for num in range(101, 500):
         validPages = readLangPage(num)
         print('Page {0} returned:'.format(num), validPages) #DEBUG
         finalURLs = dict(finalURLs, **validPages)
         print('Len:', len(finalURLs)) #DEBUG
+        if num % 100 == 0:
+            saveObj('validURLs', finalURLs)
+            time.sleep(1000)
     
     saveObj('validURLs', finalURLs)
 
