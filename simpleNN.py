@@ -7,7 +7,21 @@ import sys
 #TODO: Implement a testing metric for the whole set (get new examples to use as test data)
 #TODO: Set up cross validation data, and use it to optimize lambda and alpha 
 
-MAXITER = 50
+MAXITER = 300
+
+def sigmoid(inputVector):
+    ''' Sigmoid Activation Function
+    sigmoid(x) = 1 / (1 + e ^ -x)
+    inputVector: numpy matrix of any shape
+    
+    Returns: a matrix of the same shape with the sigmoid function applied element wise
+    '''
+    divisor = np.power(math.e * np.ones(np.shape(inputVector)), -inputVector)
+    return 1 / (1 + divisor)
+
+def sigGradient(inputVector):
+    sig = sigmoid(inputVector)
+    return np.multiply(sig, 1 - sig)
 
 def forwardProp(X, Theta1, Theta2, Theta3):
     ''' Cost Function
@@ -22,8 +36,6 @@ def forwardProp(X, Theta1, Theta2, Theta3):
     (4000x26) * (26x10) = (4000x10)
     (4000x11) * (11x1) = (4000x1)
     ''' 
-
-   
     m = np.size(X, 0)
     A1 = np.c_[np.ones(m).T, X]
 
@@ -32,25 +44,87 @@ def forwardProp(X, Theta1, Theta2, Theta3):
     A2 = sigmoid(Z2)
     A2 = np.c_[np.ones(m).T, A2]
 
-    # a3 = g(z), where z = a2*theta2
     Z3 = np.dot(A2, Theta2)
     A3 = sigmoid(Z3)
     A3 = np.c_[np.ones(m).T, A3]
 
-    # a4 = g(z), where z = a3*theta3
     Z4 = np.dot(A3, Theta3)
     A4 = sigmoid(Z4)
     return A4
 
+def f1CostFunction(X, Y, Theta1, Theta2, Theta3, lmbd):
+    ''' Regularized Cost Function running off of the F1 measure instead of simple subtraction
+    #DEBUG
+    X Param: mx169 numpy matrix of positive and negative examples
+    Y Param: mx1   numpy matrix of Labels 
+    Theta1: 170x25 numpy matrix of weights (input -> hidden layer 1)
+    Theta2: 26x10  numpy matrix of weights (hidden layer 1 -> hidden layer 2)
+    Theta3: 11x1   numpy matrix of weigths (hidden layer 2 -> output)
+    lmbd: lambda value for regularization. 0 means no regularization. 
 
-def sigmoid(inputVector):
-    ''' Sigmoid Activation Function
-    inputVector: numpy matrix of any shape
-    
-    Returns: a matrix of the same shape with the sigmoid function applied element wise
+    Returns: A 4-tuple, containing the scalar cost and three matrices of thetas. 
     '''
-    divisor = np.power(math.e * np.ones(np.shape(inputVector)), -inputVector)
-    return 1 / (1 + divisor)
+
+    #Feedforward code
+    m = np.size(Y)
+    
+    A1 = np.c_[np.ones(m).T, X] #adds bias terms
+
+    Z2 = np.dot(A1, Theta1)
+    A2 = sigmoid(Z2)
+    A2 = np.c_[np.ones(m).T, A2] #adds bias terms
+
+    Z3 = np.dot(A2, Theta2)
+    A3 = sigmoid(Z3)
+    A3 = np.c_[np.ones(m).T, A3] #adds bias terms
+
+    Z4 = np.dot(A3, Theta3)
+    #A4 = sigmoid(Z4)
+
+    
+    #Code to compute the cost function F1
+    prediction = np.array(A4 > 0.5, dtype=int)
+
+    #Bias terms added to avoid divide by 0 errors - somewhat changes F1, but not effectively 
+    truePos  = np.sum( np.logical_and( prediction == 1, Y == 1)) / m
+    falsePos = np.sum( np.logical_and( prediction == 1, Y == 0)) / m
+    falseNeg = np.sum( np.logical_and( prediction == 0, Y == 1)) / m
+    #print('TP: %.1f FP: %.1f FN: %.1f' % (truePos, falsePos, falseNeg))
+
+    precision = np.divide(truePos, truePos + falsePos)
+    recall = np.divide(truePos, truePos + falseNeg)
+
+    if precision + recall == 0:
+        print("ERROR DIVIDEBY0")
+
+    F1 = (2 * precision * recall) / (precision + recall + 1)
+
+    #Code to compute the derivative of F1 
+    #derivF1 = ( (2 * precision) / (recall + (2 * precision)) ) - \
+    #        ( (2 * recall) * precision / pow(recall + (2 * precision), 2) )
+    derivF1 = precision + 
+
+    #Code to compute the gradients of the weights
+    theta3_Gradient = np.zeros(np.shape(Theta3))
+    theta2_Gradient = np.zeros(np.shape(Theta2))
+    theta1_Gradient = np.zeros(np.shape(Theta1))
+
+
+    #D4 is the error in the output layer, computed by:
+    #(Partial Derivative of F1 Cost Function) .* sigGradient(Z4) 
+    D4 = np.multiply(derivF1, sigGradient(Z4))
+    # D3 = Theta3*D4 .* sigGradient(Z3) 1x10
+    D3 = np.multiply(np.dot(D4, Theta3[1:].T), sigGradient(Z3))
+    #D2 is a mx25 vector 1x25
+    D2 = np.multiply(np.dot(D3, Theta2[1:].T), sigGradient(Z2))
+
+    theta3_Gradient = np.dot(A3.T, D4)
+    theta2_Gradient = np.dot(A2.T, D3)
+    theta1_Gradient = np.dot(A1.T, D2)
+    return (F1, theta1_Gradient, theta2_Gradient, theta3_Gradient)
+
+
+
 
 def costFunction(X, Y, Theta1, Theta2, Theta3, lmbd):
     ''' Regularized Cost Function
@@ -82,13 +156,17 @@ def costFunction(X, Y, Theta1, Theta2, Theta3, lmbd):
     
 
     #### COMPUTES J  ####
-    prediction = A4
+    prediction = np.array(A4 > 0.5, dtype=int)
+   
+    #THIS SECTION COMMENTED OUT TO DEBUG
     #J = (1/m) * SUM(-Y*log(h(x)) - (1 - Y)(log(1 - h(x))))
-    correctError = np.multiply(-Y, np.log(prediction))
-    incorrectError = np.multiply(1 - Y, np.log(1 - prediction))
-    J = correctError - incorrectError
-    J = np.sum(J)
-    J = (1 / m) * J 
+    # correctError = np.multiply(-Y, np.log(prediction))
+    # incorrectError = np.multiply(1 - Y, np.log(1 - prediction))
+    # J = correctError - incorrectError
+    # J = (1 / m) * np.sum(J)
+
+    J = prediction - Y
+    print(J) #DEBUG
     
     #Simply the sum of the squares of the non-bias terms
     regElement = np.sum(np.square(Theta1[1:, :])) + np.sum(np.square(Theta2[1:, :])) 
@@ -117,32 +195,10 @@ def costFunction(X, Y, Theta1, Theta2, Theta3, lmbd):
     theta3_Gradient = np.dot(A3.T, D4) / m
     theta2_Gradient = np.dot(A2.T, D3) / m
     theta1_Gradient = np.dot(A1.T, D2) / m
-    # for i in range(0, m):
-        # # (10x1)
-        # # D4 must be accessed this way because it's techinally a double-wrapped array, so 
-        # # technically two dimensional. Fix? No reason it has to be like this. 
-        # D3 = np.multiply(np.dot(Theta3[1:, :].reshape(10, 1), D4[0, i].reshape(1,1)), 
-                # sigGradient(Z3[i, :]).reshape(10, 1))
-        
-        # # (25x1)
-        # D2 = np.multiply(np.dot(Theta2[1:, :], D3), sigGradient(Z2[i, :]).reshape(25, 1))
-
-        # theta3_Gradient += np.dot(A3[i, :].reshape(11, 1), D4[0, i].reshape(1,1))
-        # theta2_Gradient += np.dot(A2[i, :].reshape(26, 1), D3.T)
-        # theta1_Gradient += np.dot(A1[i, :].reshape(170, 1), D2.T)
-
-
-    # theta3_Gradient = theta3_Gradient / m
-    # theta2_Gradient = theta2_Gradient / m
-    # theta1_Gradient = theta1_Gradient / m
     #### COMPUTES GRADIENTS ####
-
-
+    print(np.size(J))
+    print(J)
     return (J, theta1_Gradient, theta2_Gradient, theta3_Gradient)
-
-def sigGradient(inputVector):
-    sig = sigmoid(inputVector)
-    return np.multiply(sig, 1 - sig)
 
 def randomizeWeights(firstDim, secDim, eps):
     return np.random.rand(firstDim * secDim).reshape((firstDim, secDim)) * (2 * eps) - eps
@@ -165,35 +221,44 @@ def gradientDescent(alpha, maxIter, X, Y, lmbd):
     '''
     m = np.size(X, 0)
 
-    epsilon = 0.1
+    epsilon = 30
     Theta1 = randomizeWeights(170, 25, epsilon)
     Theta2 = randomizeWeights(26, 10, epsilon)
     Theta3 = randomizeWeights(11, 1, epsilon)
     
+    #neccessary to avoid odd errors when compared to (m, 1) vectors as opposed to (m,) vectors
+    Y = np.reshape(Y, (m, 1))    
 
     costHistory = np.zeros(maxIter)
     for i in range(0, maxIter):
-        (costHistory[i], T1_Grad, T2_Grad, T3_Grad) = costFunction(X, Y, Theta1, Theta2, Theta3, lmbd)
+        
+        (costHistory[i], T1_Grad, T2_Grad, T3_Grad) = f1CostFunction(X, Y, Theta1, Theta2, Theta3, lmbd)
         #if (i > 25) & (J - costHistory[-1] < 1):
          #   print('Cost Function Leveled out at iteration', i)
           #  break
 
-        Theta1 -= (alpha * T1_Grad)
-        Theta2 -= (alpha * T2_Grad)
-        Theta3 -= (alpha * T3_Grad)
+        Theta1 += (alpha * T1_Grad)
+        Theta2 += (alpha * T2_Grad)
+        Theta3 += (alpha * T3_Grad)
         print('Cost at iteration', i, ':', costHistory[i])
-        if (i > 5) and abs(costHistory[i] - costHistory[i-1]) < 5:
-            print('Converged early.')
-            break
+        
+        #This code does not work well with F1 scores.
+        #if (i > 5) and abs(costHistory[i] - costHistory[i-1]) < 5:
+        #    print('Converged early.')
+        #    break
 
     return (Theta1, Theta2, Theta3, costHistory)
 
 
-def loadNewData(string):
-    if string.lower() == 'cv':
+def loadNewData(mode):
+    '''loadNewData
+    Reimports the MFCC vectors and converts them into one single numpy matrix, 
+    usable by this program.
+    mode: The mode to load the data as. Either CV, test, or training. '''
+    if mode.lower() == 'cv':
         posVectorFileName = 'CVPosEx.npy'
         negVectorFileName = 'CVNegEx.npy'
-    elif string.lower() == 'test':
+    elif mode.lower() == 'test':
         posVectorFileName = 'TestPosEx.npy'
         negVectorFileName = 'TestNegEx.npy'
     else:
@@ -211,7 +276,6 @@ def loadNewData(string):
         X = np.vstack((X, vector.ravel()))
     X = X[1:] #Deletes the first empty row
     Y = np.ones(np.size(X, 0))
-    lengthVect = np.empty(0)
 
     #The negValues are saved in a one dimesnional array, so we have to manually separate out every 169 values as distinct entries.
     m = len(negVectors)
@@ -219,8 +283,8 @@ def loadNewData(string):
         X = np.vstack((X, negVectors[i:i+169]))
         print('.', end = ''); sys.stdout.flush()
     Y = np.concatenate((Y, np.zeros(np.size(negVectors, 0)/169)))
-    np.save('X.npy', X)
-    np.save('Y.npy', Y)
+    np.save('X{0}.npy'.format(mode), X)
+    np.save('Y{0}.npy'.format(mode), Y)
     print('Done!')
     return (X, Y)
 
@@ -232,23 +296,23 @@ def main(decision, maxIter, lmbd, alpha):
         validDecision = True
 
         if decision == 'y training':
-            X = np.load('X.npy')
-            Y = np.load('Y.npy')
+            X = np.load('XTraining.npy')
+            Y = np.load('YTraining.npy')
         elif decision == 'n training':
-            (X, Y) = loadnewdata('training')
+            (X, Y) = loadNewData('Training')
         elif decision == 'y cv':
-            X = np.load('X_CV.npy')
-            Y = np.load('Y_CV.npy')
+            X = np.load('XCV.npy')
+            Y = np.load('YCV.npy')
         elif decision == 'n cv':
-            (X, Y) = loadnewdata('cv')
+            (X, Y) = loadNewData('CV')
         elif decision == 'y test':
-            X = np.load('X.npy')
-            Y = np.load('Y.npy')
+            X = np.load('XTest.npy')
+            Y = np.load('YTest.npy')
         elif decision == 'n test':
-            (X, Y) = loadnewdata('test')
+            (X, Y) = loadNewData('Test')
         else:
             validDecision = False
-            decision = input('Invalid input. Use old Data?')
+            decision = input('Invalid input. Use old Data? y/n ')
 
     #This line executes the rest of the nueral net, training apropriate thetas. 
     print('Starting gradient descent. WARNING: Will overwrite previously saved theta values.')
@@ -264,4 +328,3 @@ if __name__ == "__main__":
     lmbd = 1 #DEFAULT VALUE
 
     main(decision, MAXITER, lmbd, alpha)
-
